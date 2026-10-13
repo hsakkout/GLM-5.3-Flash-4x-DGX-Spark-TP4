@@ -75,7 +75,7 @@ run_rank() {
   local xfi=""; [[ ${FI_CACHE_PERSIST:-1} == 1 ]] && xfi="-e FLASHINFER_WORKSPACE_BASE=/cache/fi"
   local xenv=""; for kv in ${EXTRA_ENV:-}; do xenv="$xenv -e $kv"; done
   local sched="--scheduler-cls ${SCHEDULER_CLS:-adaptive_draft_scheduler.AdaptiveDraftScheduler}"; [[ ${SCHEDULER_CLS:-} == none ]] && sched=""
-  rssh "$h" "docker run -d --restart no --name ${CTN}-r$r --oom-score-adjust -900 --gpus all --network host --ipc host \
+  rssh "$h" "docker run -d --restart no --name ${CTN}-r$r --oom-score-adj -900 --gpus all --network host --ipc host \
     --device /dev/infiniband --cap-add IPC_LOCK --ulimit memlock=-1 --ulimit stack=67108864 --ulimit nofile=1048576:1048576 \
     --memory ${CTN_MEM:-112g} --memory-swap ${CTN_MEM:-112g} --entrypoint vllm \
     -v $MODEL_DIR:/model:ro -v $DRAFT_DIR:/draft:ro -v $OVERLAY_REMOTE:/overlay:ro -v $OVERLAY_REMOTE/cache:/cache $nccl_mount $patch_mount $xenv $xfi \
