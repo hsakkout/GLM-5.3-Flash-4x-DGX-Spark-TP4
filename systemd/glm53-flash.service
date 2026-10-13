@@ -1,0 +1,33 @@
+[Unit]
+Description=GLM-5.3-Flash TP=2 vLLM service (2x DGX Spark)
+Documentation=file:/home/sakkout/glm53-knapcio/README.md
+After=default.target network-online.target
+Wants=network-online.target
+# Runs as a USER unit (systemctl --user) under sakkout with linger enabled —
+# same model as the retired ds4-dspark.service. docker is accessed via the
+# docker group, no sudo. USER units cannot carry User=/Group= (216/GROUP).
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/home/sakkout/glm53-knapcio
+# Engine load 3.6-10 min (9.4 min cold-tree) + health-wait + chat verify;
+# the start wrapper itself allows up to 1800s for /health — give the unit
+# headroom over that so systemd never kills a healthy-but-slow load.
+TimeoutStartSec=2700
+TimeoutStopSec=300
+# Memory guard: llama.cpp (:8080) must not coexist with GLM on GB10 unified
+# memory. Stopping it here needs no sudo (user unit).
+ExecStartPre=/usr/bin/systemctl --user stop llama-server
+# Gatekeeper: ssh worker, swappiness=0 both nodes, RoCEv2 GID probe (writes
+# env.runtime), ports, image/weights presence, DS4-not-coserving. Fails the
+# unit BEFORE any container mutation if anything is wrong.
+ExecStartPre=/home/sakkout/glm53-knapcio/systemd/glm53-preflight.sh
+ExecStart=/home/sakkout/glm53-knapcio/systemd/glm53-start-wrapper.sh
+ExecStop=/home/sakkout/glm53-knapcio/systemd/glm53-stop-wrapper.sh
+# Do NOT auto-restart: a half-launched 2-node TP pair is worse than a clean
+# failure. The watchdog timer owns recovery (whole-pair restarts only).
+Restart=no
+
+[Install]
+WantedBy=default.target

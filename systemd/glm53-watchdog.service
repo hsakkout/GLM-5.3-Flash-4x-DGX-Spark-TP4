@@ -1,0 +1,8 @@
+[Unit]
+Description=GLM-5.3-Flash pair watchdog probe (one-shot; driven by glm53-watchdog.timer)
+
+[Service]
+Type=oneshot
+ExecStart=/home/sakkout/glm53-knapcio/systemd/glm53-watchdog.sh
+TimeoutStartSec=170
+Nice=10

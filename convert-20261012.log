@@ -1,0 +1,22 @@
+lossless8: groups {'mxfp8': 68, 'fp8blk': 117, 'bf16': 12}; decode bytes saved per rank per step 1671 MiB (7.46 ms at 235 GB/s); remaining by format mxfp8 1159 MiB, fp8blk 582 MiB, bf16 302 MiB
+  54 tensors 5 s
+  100 tensors 8 s
+  155 tensors 12 s
+  202 tensors 15 s
+  250 tensors 18 s
+  303 tensors 23 s
+  350 tensors 26 s
+  404 tensors 30 s
+overlay model-qmix-lossless8.safetensors: {'mxfp8': 238, 'fp8blk': 170} 6.44 GiB in 35 s
+assembled /models/glm-quant-mix/lossless8 (zero-copy): 148070 names, 408 re-encoded weights, quantized_layers 549
+VERIFY dups 0 | indexed-missing 0 | index-wrong-file 0 | orphan scales 0 | names 148070
+quantized 35 tensors: 1840 MiB bf16 -> 920 MiB fp8+scales
+relative Frobenius error: mean 2.64 %  min 2.64 %  max 2.65 %
+  layers.0.mlp.down_proj.weight: 2.64 %
+  layers.0.mlp.gate_proj.weight: 2.64 %
+  layers.0.mlp.up_proj.weight: 2.64 %
+  layers.0.self_attn.k_proj.weight: 2.65 %
+  layers.0.self_attn.o_proj.weight: 2.64 %
+  layers.0.self_attn.q_proj.weight: 2.64 %
+  layers.0.self_attn.v_proj.weight: 2.64 %
+CONVERT_ALL_DONE

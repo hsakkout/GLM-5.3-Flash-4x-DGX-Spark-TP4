@@ -1,0 +1,5 @@
+runtime destination preflight PASS
+runtime destination preflight PASS
+12e2f9e29fea65eb1673ea636d03f96148846929fd6531c819466124492ce833
+ddcbb165a92106de1b179a3e2a79c09e7372e9b841efbd140095647bb5ba3542
+launched glm53a-r0..1; ./start_tp2.sh status until /health is 200 (cold-cache boots can take longer)
