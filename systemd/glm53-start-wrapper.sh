@@ -50,6 +50,26 @@ if ssh -o ConnectTimeout=10 -o BatchMode=yes "$WORKER" "docker ps -a --format '{
 fi
 sleep 10  # master-port TIME_WAIT / NVRM settle (playbook's POST_TEARDOWN_SLEEP)
 
+# --- 1b. Page-cache reclaim (no sudo): on GB10, clean page cache (weight reads,
+#        ~5-7 GiB after any container churn) blocks CUDA-visible free and fails
+#        the vLLM free-memory gate at 0.82; sudo drop_caches is unavailable, so
+#        force reclaim by allocating+touching+freeing 9 GiB of anon memory —
+#        with swappiness=0 the kernel evicts clean page cache to satisfy it. ---
+python3 - <<'PYRECLAIM' || true
+import gc
+try:
+    chunks = []
+    for _ in range(9):
+        b = bytearray(1 << 30)
+        b[::4096] = b'x' * (len(b) // 4096)
+        chunks.append(b)
+    del chunks, b
+    gc.collect()
+    print('[glm53-start] page-cache reclaim sweep: 9 GiB alloc+touch+free OK')
+except MemoryError:
+    print('[glm53-start] WARN: reclaim sweep hit MemoryError (host tight) — continuing')
+PYRECLAIM
+
 # --- 2. Launch: worker first, then head, with the probed GID ---
 cd "$KNAP"
 if ENV_FILE="$ENV_RUNTIME" bash start_tp2.sh serve >>"$STATE_DIR/start.log" 2>&1; then
