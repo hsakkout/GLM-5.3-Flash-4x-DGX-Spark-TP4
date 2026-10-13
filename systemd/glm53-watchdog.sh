@@ -29,6 +29,14 @@ fi
 
 # --- Only supervise when the unit is enabled ---
 if ! systemctl --user is-enabled "$UNIT" >/dev/null 2>&1; then
+  # 2026-10-13 lesson: a manager-death churn once DROPPED the wants symlink;
+  # the unit stayed down for an hour with the watchdog silently standing down.
+  # Never silent again: if disabled AND the API is actually down, say so loudly.
+  if curl -fsS -m 8 "$API" >/dev/null 2>&1; then
+    echo 0 > "$FAIL_FILE"
+    exit 0   # disabled but serving (maintenance pattern) — fine, stay quiet
+  fi
+  log "ALERT unit DISABLED and API DOWN ($API) — service is down and nothing will auto-start it. Re-enable+start: systemctl --user enable --now $UNIT"
   echo 0 > "$FAIL_FILE"
   exit 0
 fi

@@ -23,6 +23,18 @@ log() { echo "[$LOGTAG] $*"; logger -t "$LOGTAG" "$*" 2>/dev/null || true; }
 
 [ -f "$ENV_RUNTIME" ] || { log "FATAL: $ENV_RUNTIME missing — preflight must run first"; exit 1; }
 
+# --- 0. Idempotent start: if a pair is ALREADY serving, adopt it instead of
+#     tearing it down (a fresh user manager auto-starting this unit after a
+#     manager death used to docker-rm a HEALTHY pair and eat a needless 3-4 min
+#     reload gap, 2026-10-13). Health 200 + both containers up = good enough;
+#     RemainAfterExit then marks the unit active for this manager. ---
+if curl -fsS -m 8 "http://127.0.0.1:${PORT}/health" >/dev/null 2>&1 \
+   && docker ps --format '{{.Names}}' 2>/dev/null | grep -q "^${CTN}-r0$" \
+   && ssh -o ConnectTimeout=8 -o BatchMode=yes "$WORKER" "docker ps --format '{{.Names}}' | grep -q '^${CTN}-r1$'" 2>/dev/null; then
+  log "pair already healthy on :${PORT} — adopting running containers, skipping relaunch"
+  exit 0
+fi
+
 # --- 1. Tear down stale containers (whole-pair, both nodes) ---
 # The launcher's preflight_runtime.py refuses to serve onto an existing
 # container name, and a stale worker wedges the new head's TCPStore rendezvous.
