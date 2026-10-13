@@ -39,17 +39,23 @@ if systemctl --user is-active llama-server >/dev/null 2>&1; then
   systemctl --user stop llama-server >> "$LOG_FILE" 2>&1 || true
 fi
 
-# --- Memory pressure tracking (warn-only, same calibration as DS4: at 0.83
-#     util steady-state MemAvailable is ~5-7 GiB — warn <6, alert <5) ---
+# --- Memory pressure tracking — GLM-TP2 calibration (2026-10-13).
+#     At GPU_UTIL=0.83 with desktop co-residents, steady-state MemAvailable is
+#     ~0.5 GiB BY DESIGN (env.tp2-low: 0.85 failed the free-memory gate on a
+#     non-dedicated host; 0.83 + 4GiB KV is the documented tradeoff). Integer-GiB
+#     thresholds (DS4's <6/<5) read 0 forever here — track MiB:
+#     warn < 400 MiB (below the observed steady band), distress < 256 MiB
+#     (genuine pre-OOM) or swap grew >1 GiB/tick (reclaim churn — the real
+#     crash predictor per the DS4 stress-test work; static swap is benign). ---
 AVAIL_KB=$(awk '/MemAvailable/{print $2}' /proc/meminfo)
 SWAP_USED_KB=$(awk '/SwapTotal/{t=$2}/SwapFree/{f=$2}END{print t-f}' /proc/meminfo)
-AVAIL_GB=$((AVAIL_KB/1048576)); SWAP_GB=$((SWAP_USED_KB/1048576))
+AVAIL_MIB=$((AVAIL_KB/1024)); SWAP_GIB=$(( (SWAP_USED_KB/1024 + 1023)/1024 ))
 SWAP_PREV_FILE="$STATE_DIR/swap_kb_prev"
 swap_prev=$(cat "$SWAP_PREV_FILE" 2>/dev/null || echo "$SWAP_USED_KB")
 echo "$SWAP_USED_KB" > "$SWAP_PREV_FILE"
-swap_delta_gb=$(( (SWAP_USED_KB - swap_prev) / 1048576 ))
-[ "$AVAIL_GB" -lt 6 ] && log "MEMWARN MemAvailable=${AVAIL_GB}GiB (<6) swap_used=${SWAP_GB}GiB — memory pressure near GLM ceiling"
-[ "$swap_delta_gb" -gt 1 ] && log "MEMWARN swap grew +${swap_delta_gb}GiB since last tick (total ${SWAP_GB}GiB) — likely reclaim churn"
+swap_delta_gib=$(( (SWAP_USED_KB - swap_prev) / 1048576 ))
+[ "$AVAIL_MIB" -lt 400 ] && log "MEMWARN MemAvailable=${AVAIL_MIB}MiB (<400) swap_used=${SWAP_GIB}GiB — below GLM steady band (~550MiB)"
+[ "$swap_delta_gib" -gt 1 ] && log "MEMWARN swap grew +${swap_delta_gib}GiB since last tick (total ${SWAP_GIB}GiB) — likely reclaim churn"
 
 # --- Memory pressure state machine (CLEAR -> ALERT -> REMINDER -> ALLCLEAR) ---
 WARN_STREAK_FILE="$STATE_DIR/memwarn_streak"
@@ -57,8 +63,8 @@ MEM_STATE_FILE="$STATE_DIR/mem_alert_state"
 MEM_ALERT_TS_FILE="$STATE_DIR/mem_alert_ts"
 MEM_LAST_REMINDER_FILE="$STATE_DIR/mem_last_reminder"
 in_distress=0
-[ "$AVAIL_GB" -lt 5 ] && in_distress=1
-[ "$swap_delta_gb" -gt 1 ] && in_distress=1
+[ "$AVAIL_MIB" -lt 256 ] && in_distress=1
+[ "$swap_delta_gib" -gt 1 ] && in_distress=1
 if [ "$in_distress" = "1" ]; then
   streak=$(( $(cat "$WARN_STREAK_FILE" 2>/dev/null || echo 0) + 1 ))
   echo "$streak" > "$WARN_STREAK_FILE"
@@ -68,12 +74,12 @@ if [ "$in_distress" = "1" ]; then
     if [ "$mem_state" = "clear" ]; then
       now=$(date +%s)
       echo alert > "$MEM_STATE_FILE"; echo "$now" > "$MEM_ALERT_TS_FILE"; echo "$now" > "$MEM_LAST_REMINDER_FILE"
-      log "ALERT memory pressure onset: MemAvailable=${AVAIL_GB}GiB swap=${SWAP_GB}GiB (streak=$streak)"
+      log "ALERT memory pressure onset: MemAvailable=${AVAIL_MIB}MiB swap=${SWAP_GIB}GiB (streak=$streak)"
     else
       last_reminder=$(cat "$MEM_LAST_REMINDER_FILE" 2>/dev/null || echo 0); now=$(date +%s)
       if [ $(( (now - last_reminder) / 3600 )) -ge 24 ]; then
         echo "$now" > "$MEM_LAST_REMINDER_FILE"
-        log "REMINDER memory pressure sustained $(( (now - (cat "$MEM_ALERT_TS_FILE" 2>/dev/null || echo 0)) / 3600 ))h: MemAvailable=${AVAIL_GB}GiB swap=${SWAP_GB}GiB"
+        log "REMINDER memory pressure sustained $(( (now - (cat "$MEM_ALERT_TS_FILE" 2>/dev/null || echo 0)) / 3600 ))h: MemAvailable=${AVAIL_MIB}MiB swap=${SWAP_GIB}GiB"
       fi
     fi
   fi
@@ -83,7 +89,7 @@ else
   if [ "$mem_state" = "alert" ]; then
     alert_ts=$(cat "$MEM_ALERT_TS_FILE" 2>/dev/null || echo 0); now=$(date +%s)
     echo clear > "$MEM_STATE_FILE"
-    log "ALLCLEAR memory pressure resolved after $(( (now - alert_ts) / 3600 ))h. MemAvailable=${AVAIL_GB}GiB swap=${SWAP_GB}GiB"
+    log "ALLCLEAR memory pressure resolved after $(( (now - alert_ts) / 3600 ))h. MemAvailable=${AVAIL_MIB}MiB swap=${SWAP_GIB}GiB"
   fi
 fi
 
